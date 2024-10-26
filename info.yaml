@@ -1,40 +1,45 @@
 # Tiny Tapeout project information
 project:
-  title:        ""      # Project title
-  author:       ""      # Your name
-  discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  ""      # One line description of what your project does
-  language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
-  clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
+  title:        "SoCET UART"      # Project title
+  author:       "Miguel Isrrael Teran"      # Your name
+  discord:      "miguel_isrrael"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
+  description:  "A UART made by SoCET team"      # One line description of what your project does
+  language:     "SystemVerilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
+  clock_hz:     50000000       # Clock frequency in Hz (or 0 if not applicable)
 
   # How many tiles your design occupies? A single tile is about 167x108 uM.
   tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2 or 8x2
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
-  top_module:  "tt_um_example"
+  top_module:  "tt_um_purdue_socet_uart"
 
   # List your project's source files here.
   # Source files must be in ./src and you must list each source file separately, one per line.
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "project.v"
+    - "sv2v_converted/AHBUart_tapeout_wrapper.v"
+    - "sv2v_converted/BaudRateGen.v"
+    - "sv2v_converted/socetlib_fifo.v"
+    - "sv2v_converted/UartRxEn.v"
+    - "sv2v_converted/UartTxEn.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 pinout:
   # Inputs
-  ui[0]: ""
-  ui[1]: ""
-  ui[2]: ""
-  ui[3]: ""
-  ui[4]: ""
-  ui[5]: ""
+  ui[0]: "rx"
+  ui[1]: "cts"
+  ui[2]: "Control pin 0"
+  ui[3]: "Control pin 1"
+  ui[4]: "Control pin 2"
+  ui[5]: "Control pin 3"
   ui[6]: ""
   ui[7]: ""
 
   # Outputs
-  uo[0]: ""
-  uo[1]: ""
-  uo[2]: ""
+  uo[0]: "tx"
+  uo[1]: "rts"
+  uo[2]: "err"
   uo[3]: ""
   uo[4]: ""
   uo[5]: ""
@@ -42,14 +47,14 @@ pinout:
   uo[7]: ""
 
   # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[0]: "data[0]"
+  uio[1]: "data[1]"
+  uio[2]: "data[2]"
+  uio[3]: "data[3]"
+  uio[4]: "data[4]"
+  uio[5]: "data[5]"
+  uio[6]: "data[6]"
+  uio[7]: "data[7]"
 
 # Do not change!
 yaml_version: 6
