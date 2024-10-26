@@ -379,7 +379,6 @@ module BaudRateGen #(
 ) (
     input clk,
     input nReset,
-    input syncReset,
 
     input phase,
     input [txWidth-1:0] rate,
@@ -419,17 +418,24 @@ module BaudRateGen #(
     txClk     = (rate > 1) ? (txCount == 0) ^ phase : phase;
   end
 
-  always @(posedge clk, negedge nReset) begin
-    if (!nReset || syncReset || (txCount == 0)) begin
-      rxCount <= rxRate - offset - 1;
-    end else if (rxCount == 0) begin
-      rxCount <= rxRate - 1;
-    end else if (!inWait) begin
-      rxCount <= rxCount - 1;
+  always_ff @(posedge clk, negedge nReset) begin
+    if (!nReset) begin
+      // rxCount <= rxRate - offset - 1;
+      rxCount <= 2603;
     end
+    else begin
+      if (rxCount == 0) begin
+        rxCount <= rxRate - 1;
+      end else if (!inWait) begin
+        rxCount <= rxCount - 1;
+      end
+    end
+  end
 
-    if (!nReset || syncReset || (txCount == 0)) begin
-      txCount <= rate - 1;
+  always_ff @(posedge clk, negedge nReset) begin
+    if (!nReset) begin
+      // txCount <= rate - 1;
+      txCount <= 5207 - 1;
     end else begin
       txCount <= txCount - 1;
     end
@@ -469,7 +475,13 @@ module UartRxEn #(
   logic rise, fall, cmp;
 
   always_ff @(posedge clk, negedge nReset) begin
-    cmp <= !nReset ? 1 : en ? in : cmp;
+    if (!nReset) begin
+      cmp <= 1;
+    end
+    else if (en) begin
+      cmp <= in;
+    end
+    // cmp <= !nReset ? 1 : en ? in : cmp;
   end
 
   always_comb begin
@@ -523,6 +535,7 @@ module UartRxEn #(
     if (!nReset) begin
       readCount <= 8;
       data <= 0;
+      readBuf <= 0;
     end else begin
 
       if (readCount == 0) begin

@@ -12,14 +12,14 @@ module AHBUart_tapeout_wrapper (
 );
 	reg _sv2v_0;
 	parameter [15:0] DefaultRate = 5207;
-	input clk;
-	input nReset;
-	input [3:0] control;
-	input [7:0] tx_data;
+	input wire clk;
+	input wire nReset;
+	input wire [3:0] control;
+	input wire [7:0] tx_data;
 	output reg [7:0] rx_data;
-	input rx;
+	input wire rx;
 	output wire tx;
-	input cts;
+	input wire cts;
 	output wire rts;
 	output reg err;
 	wire [1:0] rate_control;
@@ -51,21 +51,22 @@ module AHBUart_tapeout_wrapper (
 			default: new_rate = DefaultRate;
 		endcase
 	end
+	reg buffer_clear;
+	reg [15:0] rate;
 	always @(posedge clk or negedge nReset)
-		if (!nReset) begin
+		if (!nReset)
 			rate <= DefaultRate;
-			new_rate <= DefaultRate;
-		end
-		else begin
-			if (|rate_control)
-				rate <= new_rate;
-			else
-				rate <= DefaultRate;
-			if (ren_wen_nidle == 2'd3)
-				buffer_clear <= 1'b1;
-			else
-				buffer_clear <= 1'b0;
-		end
+		else if (|rate_control)
+			rate <= new_rate;
+		else
+			rate <= DefaultRate;
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			buffer_clear <= 1'b0;
+		else if (ren_wen_nidle == 2'd3)
+			buffer_clear <= 1'b1;
+		else
+			buffer_clear <= 1'b0;
 	wire [7:0] rxData;
 	reg [7:0] txData;
 	wire rxErr;
@@ -75,17 +76,6 @@ module AHBUart_tapeout_wrapper (
 	wire txClk;
 	wire txBusy;
 	wire txDone;
-	reg syncReset;
-	always @(posedge clk or negedge nReset)
-		if (!nReset)
-			syncReset <= 1;
-		else if (ren_wen_nidle)
-			case (ren_wen_nidle)
-				2'd1, 2'd2: syncReset <= 1;
-			endcase
-		else
-			syncReset <= 0;
-	wire rate;
 	BaudRateGen #(
 		.MaxClockRate(65536),
 		.MinBaudRate(1)
@@ -93,7 +83,6 @@ module AHBUart_tapeout_wrapper (
 		.phase(1'b0),
 		.clk(clk),
 		.nReset(nReset),
-		.syncReset(syncReset),
 		.rate(rate),
 		.rxClk(rxClk),
 		.txClk(txClk)
@@ -168,8 +157,12 @@ module AHBUart_tapeout_wrapper (
 	assign fifoRx_clear = buffer_clear;
 	assign fifoTx_clear = buffer_clear;
 	assign rts = fifoRx_full;
-	always @(posedge clk or negedge nReset) begin
-		if (rxDone && !rxErr) begin
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			fifoRx_wdata <= 8'b00000000;
+			fifoRx_WEN <= 1'b0;
+		end
+		else if (rxDone && !rxErr) begin
 			if (fifoRx_overrun) begin
 				fifoRx_wdata <= fifoRx_wdata;
 				fifoRx_WEN <= 1'b0;
@@ -183,11 +176,17 @@ module AHBUart_tapeout_wrapper (
 			fifoRx_wdata <= 8'b00000000;
 			fifoRx_WEN <= 1'b0;
 		end
-		if ((cts && !txBusy) && txDone) begin
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			txData <= 8'b00000000;
+			txValid <= 1'b0;
+			fifoTx_REN <= 1'b0;
+		end
+		else if ((cts && !txBusy) && txDone) begin
 			if (fifoTx_underrun) begin
 				txData <= fifoTx_rdata;
 				txValid <= 1'b0;
-				fifoRx_REN <= 1'b1;
+				fifoTx_REN <= 1'b1;
 			end
 			else begin
 				txData <= fifoTx_rdata;
@@ -200,7 +199,6 @@ module AHBUart_tapeout_wrapper (
 			txValid <= 1'b0;
 			fifoTx_REN <= 1'b0;
 		end
-	end
 	always @(posedge clk or negedge nReset)
 		if (!nReset) begin
 			fifoTx_wdata <= 8'b00000000;

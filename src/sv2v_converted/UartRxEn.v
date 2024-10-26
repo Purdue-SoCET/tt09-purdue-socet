@@ -28,7 +28,11 @@ module UartRxEn (
 	reg rise;
 	reg fall;
 	reg cmp;
-	always @(posedge clk or negedge nReset) cmp <= (!nReset ? 1 : (en ? in : cmp));
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			cmp <= 1;
+		else if (en)
+			cmp <= in;
 	always @(*) begin
 		if (_sv2v_0)
 			;
@@ -78,6 +82,7 @@ module UartRxEn (
 		if (!nReset) begin
 			readCount <= 8;
 			data <= 0;
+			readBuf <= 0;
 		end
 		else begin
 			if (readCount == 0)

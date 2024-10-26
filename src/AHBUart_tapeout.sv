@@ -27,18 +27,18 @@
 module AHBUart_tapeout_wrapper #(
     logic [15:0] DefaultRate = 5207  // Chosen by fair dice roll
 ) (
-    input clk, // 1
-    input nReset, // 1
-    input [3:0] control, // 4
-    input [7:0] tx_data, // input to the fifo, and then the transceiver..which is then sent out again by tx
-    output [7:0] rx_data, // received from rx, output from the reciever, to the fifo..which is then sent out by the data line
+    input logic clk, // 1
+    input logic nReset, // 1
+    input logic [3:0] control, // 4
+    input logic [7:0] tx_data, // input to the fifo, and then the transceiver..which is then sent out again by tx
+    output logic [7:0] rx_data, // received from rx, output from the reciever, to the fifo..which is then sent out by the data line
     
-    input  rx, // 1
-    output tx,
+    input  logic rx, // 1
+    output logic tx,
 
-    input cts, // 1
-    output rts,
-    output err 
+    input logic cts, // 1
+    output logic rts,
+    output logic err 
 
     // PIN COUNT:
     // rx_data, tx_data 8/8 bidirectional (bidirectional lines are handled in the tapeout wrapper file)
@@ -83,23 +83,30 @@ module AHBUart_tapeout_wrapper #(
         endcase
     end
     
+    logic buffer_clear;
+    logic [15:0] rate;
     always_ff @(posedge clk, negedge nReset) begin
         if(!nReset) begin
             rate <= DefaultRate;
-            new_rate <= DefaultRate;
         end else begin
             if(|rate_control) begin
               rate <= new_rate;
             end else begin
               rate <= DefaultRate;
             end
-             ///   
-            if(ren_wen_nidle == BUFFER_CLEAR) begin // if the read and write direction pin is enabled simultaneously, and non-zero data exists on the rx_data and tx_data
-                buffer_clear <= 1'b1;
-            end else begin
-                buffer_clear <= 1'b0; // else the buffer is not clear 
-            end
         end
+    end
+
+    always_ff @(posedge clk, negedge nReset) begin
+            if(!nReset) begin
+              buffer_clear <= 1'b0;
+            end else begin
+              if(ren_wen_nidle == BUFFER_CLEAR) begin // if the read and write direction pin is enabled simultaneously, and non-zero data exists on the rx_data and tx_data
+                  buffer_clear <= 1'b1;
+              end else begin
+                  buffer_clear <= 1'b0; // else the buffer is not clear 
+              end
+            end
     end
 
     // UART signal
@@ -107,19 +114,6 @@ module AHBUart_tapeout_wrapper #(
     logic [7:0] txData;
     logic rxErr, rxClk, rxDone;
     logic txValid, txClk, txBusy, txDone;
-    logic syncReset;
-
-    always_ff @(posedge clk, negedge nReset) begin
-    if (!nReset) begin
-      syncReset <= 1;
-    end else if (ren_wen_nidle) begin // check if ren_wen is beyond idle..
-        case (ren_wen_nidle)
-        to_TX, from_RX: syncReset <= 1; // if in read or write enable...
-      endcase
-    end else begin
-      syncReset <= 0;
-    end
-    end
 
     // Params set "clock rate" to 2**16, and "min baud rate" to 1
     // This is equivalent to "please give me 16-bit counters"
@@ -198,8 +192,11 @@ module AHBUart_tapeout_wrapper #(
   // UART - buffer signal mechanics
   assign rts = fifoRx_full;
   always_ff @(posedge clk, negedge nReset) begin
-    //UART Rx to buffer Rx
-    if(rxDone && !rxErr) begin
+    if (!nReset) begin
+      fifoRx_wdata <= 8'b0;
+      fifoRx_WEN <= 1'b0;
+    end
+    else if(rxDone && !rxErr) begin
         if (fifoRx_overrun) begin
          fifoRx_wdata <= fifoRx_wdata;
          fifoRx_WEN <= 1'b0;
@@ -213,14 +210,21 @@ module AHBUart_tapeout_wrapper #(
       fifoRx_wdata <= 8'b0; // clear out the data in the fifo and disable writing into it
       fifoRx_WEN <= 1'b0;
     end
+  end
 
+    always_ff @(posedge clk, negedge nReset) begin
+      if (!nReset) begin
+        txData <= 8'b0;
+        txValid <= 1'b0;
+        fifoTx_REN <= 1'b0;
+      end
     //buffer Tx to UART Tx
-      if(cts && !txBusy && txDone) begin //is txDone or txBusy for this spot?? A: either signal should be fine, they are the converse of each other and I don't think its meaningful when
+      else if(cts && !txBusy && txDone) begin //is txDone or txBusy for this spot?? A: either signal should be fine, they are the converse of each other and I don't think its meaningful when
                                                                   //both are high
         if (fifoTx_underrun) begin
         txData <= fifoTx_rdata;
         txValid <= 1'b0;
-        fifoRx_REN <= 1'b1;
+        fifoTx_REN <= 1'b1;
         end else begin
         txData <= fifoTx_rdata; //should i account for buffer capacity, maybe not? // should be fine, both are 8 bits...
         txValid <= 1'b1; // the ts signal is valid
@@ -260,7 +264,7 @@ module AHBUart_tapeout_wrapper #(
         end
       end
 
-    logic err;
+    // logic err;
     always_ff @(posedge clk, negedge nReset) begin
     if (!nReset) begin
         err   <= 0;
