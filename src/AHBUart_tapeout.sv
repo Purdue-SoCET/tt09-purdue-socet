@@ -25,20 +25,22 @@
 //uart implementation
 
 module AHBUart_tapeout_wrapper #(
-    logic [15:0] DefaultRate = 5207  // Chosen by fair dice roll
+    logic [19:0] DefaultRate = 5207  // Chosen by fair dice roll
+    //Michael - i don't like this number :(
 ) (
-    input logic clk, // 1
-    input logic nReset, // 1
+    input clk, // 1
+    input nReset, // 1
     input logic [3:0] control, // 4
     input logic [7:0] tx_data, // input to the fifo, and then the transceiver..which is then sent out again by tx
     output logic [7:0] rx_data, // received from rx, output from the reciever, to the fifo..which is then sent out by the data line
+    //Note: tx_data and rx_data will be merged into a single bidirectional line on the tapeout
     
-    input  logic rx, // 1
-    output logic tx,
+    input  rx, // 1
+    output tx,
 
-    input logic cts, // 1
-    output logic rts,
-    output logic err 
+    input cts, // 1
+    output rts,
+    output err 
 
     // PIN COUNT:
     // rx_data, tx_data 8/8 bidirectional (bidirectional lines are handled in the tapeout wrapper file)
@@ -46,32 +48,37 @@ module AHBUart_tapeout_wrapper #(
     // tx, rts, err, 3/8 out
 );
 
-  logic [1:0] rate_control, ren_wen;
-  logic [15:0] new_rate;
-  logic [1:0]  ren_wen_nidle, prev_ren_wen; // act as the direction
-  assign ren_wen = control[3:2];
-  assign rate_control = control[1:0];
-  // tristate logic handling...
-  
-  typedef enum logic [1:0] {
+    logic [1:0] rate_control, ren_wen;
+    logic [19:0] rate, new_rate;
+    logic [1:0]  ren_wen_nidle, prev_ren_wen; // act as the direction
+    assign ren_wen = control[3:2];
+    assign rate_control = control[1:0];
+    // tristate logic handling...
+
+    logic buffer_clear;
+    
+    //configurations for ren_wen and derivatives
+    typedef enum logic [1:0] {
         IDLE = 0,
         to_TX = 1,
         from_RX = 2,
         BUFFER_CLEAR = 3
-  } data_state_t;
+    } data_state_t;
 
+    //basically there should be a clock cycle between each data request (double check this works properly on waveform)
+    //  rest of the hardware is based on ren_wen_nidle
     always_ff@(posedge clk, negedge nReset) begin
-    if (!nReset) begin
-        prev_ren_wen <= IDLE;
-        ren_wen_nidle <= IDLE;
-    end else begin
-        if (ren_wen == IDLE) begin
-            ren_wen_nidle <= prev_ren_wen;
-        end else begin
+        if (!nReset) begin
+            prev_ren_wen <= IDLE;
             ren_wen_nidle <= IDLE;
-        end
-        prev_ren_wen <= ren_wen;
-    end 
+        end else begin
+            if (ren_wen != IDLE && prev_ren_wen == IDLE) begin
+                ren_wen_nidle <= ren_wen;
+            end else begin
+                ren_wen_nidle <= IDLE;
+            end
+            prev_ren_wen <= ren_wen;
+        end 
     end
 
   always_comb begin
@@ -83,30 +90,24 @@ module AHBUart_tapeout_wrapper #(
         endcase
     end
     
-    logic buffer_clear;
-    logic [15:0] rate;
     always_ff @(posedge clk, negedge nReset) begin
         if(!nReset) begin
             rate <= DefaultRate;
         end else begin
-            if(|rate_control) begin
-              rate <= new_rate;
+            rate <= new_rate;
+            // if(|rate_control) begin //this won't allow you to set rate to DefaultRate
+            //   rate <= new_rate;
+            // end else begin
+            //   rate <= DefaultRate;
+            // end
+            
+             ///   
+            if(ren_wen_nidle == BUFFER_CLEAR) begin // if the read and write direction pin is enabled simultaneously
+                buffer_clear <= 1'b1;
             end else begin
-              rate <= DefaultRate;
+                buffer_clear <= 1'b0; // else the buffer is not clear 
             end
         end
-    end
-
-    always_ff @(posedge clk, negedge nReset) begin
-            if(!nReset) begin
-              buffer_clear <= 1'b0;
-            end else begin
-              if(ren_wen_nidle == BUFFER_CLEAR) begin // if the read and write direction pin is enabled simultaneously, and non-zero data exists on the rx_data and tx_data
-                  buffer_clear <= 1'b1;
-              end else begin
-                  buffer_clear <= 1'b0; // else the buffer is not clear 
-              end
-            end
     end
 
     // UART signal
@@ -114,10 +115,24 @@ module AHBUart_tapeout_wrapper #(
     logic [7:0] txData;
     logic rxErr, rxClk, rxDone;
     logic txValid, txClk, txBusy, txDone;
+    logic syncReset;
+
+    always_ff @(posedge clk, negedge nReset) begin
+        if (!nReset) begin
+            syncReset <= 1;
+        // end else if (ren_wen_nidle != 2'b0) begin // check if ren_wen is beyond idle..
+        //     //this case logic is kinda goofy, we shouldn't reset when when the read or write signal goes on
+        //     case (ren_wen_nidle)
+        //         to_TX, from_RX: syncReset <= 1; // if in read or write enable...
+        //     endcase
+        end else begin
+            syncReset <= 0;
+        end
+    end
 
     // Params set "clock rate" to 2**16, and "min baud rate" to 1
-    // This is equivalent to "please give me 16-bit counters"
-    BaudRateGen #(2 ** 16, 1) bg (
+    // This is equivalent to "please give me 20-bit counters"
+    BaudRateGen #(2 ** 20, 1) bg (
         .phase(1'b0),
         .*
     );
@@ -145,7 +160,7 @@ module AHBUart_tapeout_wrapper #(
     logic fifoRx_WEN, fifoRx_REN, fifoRx_clear;
     logic [7:0] fifoRx_wdata;
     logic fifoRx_full, fifoRx_empty, fifoRx_underrun, fifoRx_overrun;
-    logic [$clog2(8)-1:0] fifoRx_count; //current buffer capacity is 8
+            logic [$clog2(8)-1:0] fifoRx_count; //current buffer capacity is 8, Note to self: might reduce if chip too big
     logic [7:0] fifoRx_rdata;
 
     socetlib_fifo fifoRx (
@@ -189,90 +204,108 @@ module AHBUart_tapeout_wrapper #(
     assign fifoRx_clear = buffer_clear;
     assign fifoTx_clear = buffer_clear;
 
-  // UART - buffer signal mechanics
-  assign rts = fifoRx_full;
-  always_ff @(posedge clk, negedge nReset) begin
-    if (!nReset) begin
-      fifoRx_wdata <= 8'b0;
-      fifoRx_WEN <= 1'b0;
-    end
-    else if(rxDone && !rxErr) begin
-        if (fifoRx_overrun) begin
-         fifoRx_wdata <= fifoRx_wdata;
-         fifoRx_WEN <= 1'b0;
-        // do we want to keep or flush out the old data in the fifo register if its full and the rx wants to send in more data?
-        end else begin
-        // alt, check with fifo clear
-      fifoRx_wdata <= rxData; //do i need to account for overflow, probably not?
-      fifoRx_WEN <= 1'b1;
-        end
-    end else begin
-      fifoRx_wdata <= 8'b0; // clear out the data in the fifo and disable writing into it
-      fifoRx_WEN <= 1'b0;
-    end
-  end
-
+    // UART - buffer signal mechanics
+    assign rts = fifoRx_full;
     always_ff @(posedge clk, negedge nReset) begin
-      if (!nReset) begin
-        txData <= 8'b0;
-        txValid <= 1'b0;
-        fifoTx_REN <= 1'b0;
-      end
-    //buffer Tx to UART Tx
-      else if(cts && !txBusy && txDone) begin //is txDone or txBusy for this spot?? A: either signal should be fine, they are the converse of each other and I don't think its meaningful when
-                                                                  //both are high
-        if (fifoTx_underrun) begin
-        txData <= fifoTx_rdata;
-        txValid <= 1'b0;
-        fifoTx_REN <= 1'b1;
+        //UART Rx to buffer Rx
+        if(rxDone && !rxErr) begin
+            if (fifoRx_overrun) begin
+                fifoRx_wdata <= fifoRx_wdata;
+                fifoRx_WEN <= 1'b0;
+                // do we want to keep or flush out the old data in the fifo register if its full and the rx wants to send in more data?
+                //    michael - probably not, the user should reset the buffer if you overflow, but just in case we can ask cole
+            end else begin
+                // alt, check with fifo clear
+                fifoRx_wdata <= rxData; //do i need to account for overflow, probably not?
+                fifoRx_WEN <= 1'b1;
+            end
         end else begin
-        txData <= fifoTx_rdata; //should i account for buffer capacity, maybe not? // should be fine, both are 8 bits...
-        txValid <= 1'b1; // the ts signal is valid
-        fifoTx_REN <= 1'b1;
+            fifoRx_wdata <= 8'b0; // clear out the data in the fifo and disable writing into it
+            fifoRx_WEN <= 1'b0;
         end
-    end else begin
-      txData <= 8'b0;
-      txValid <= 1'b0;
-      fifoTx_REN <= 1'b0;
-    end
-  end
 
-    // bus signal mechanics
-        always_ff @(posedge clk, negedge nReset) begin
+        //buffer Tx to UART Tx
+        if(cts && !txBusy && txDone) begin //is txDone or txBusy for this spot?? A: either signal should be fine, they are the converse of each other and I don't think its meaningful when
+                                                                      //both are high, M: makes sense
+            if (fifoTx_underrun) begin
+                txData <= fifoTx_rdata; //m - weird logic, ask about this later
+                txValid <= 1'b0;
+            end else begin
+                txData <= fifoTx_rdata; //should i account for buffer capacity, maybe not? // should be fine, both are 8 bits...
+                txValid <= 1'b1; // the ts signal is valid
+            end
+        end else begin
+            txData <= 8'b0;
+            txValid <= 1'b0;
+        end
+    end
+
+    // "bus signal" mechanics
+    //making this always_comb just to see what happens :) 
+    always_comb begin
+        // "bus" to tx_buffer
         if (!nReset) begin
-            fifoTx_wdata <= 8'b0;
-            fifoTx_WEN <= 1'b0;
-            rx_data <= 8'b0;
-            fifoRx_REN <= 1'b0;
+            fifoTx_wdata = 8'b0;
+            fifoTx_WEN = 1'b0;
+        end else if(ren_wen_nidle == to_TX) begin
+            fifoTx_wdata = tx_data; // assume we r sending it through the first byte at a time right now
+            fifoTx_WEN = 1'b1;
         end else begin
-            if((ren_wen_nidle == to_TX) && |tx_data ) begin
-            fifoTx_wdata <= tx_data; // assume we r sending it through the first byte at a time right now
-            fifoTx_WEN <= 1'b1;
+            fifoTx_wdata = 8'b0; // else writing nothing into the TX from the bus
+            fifoTx_WEN = 1'b0; // write signal is disabled
         end
-        else begin
-            fifoTx_wdata <= 8'b0; // else writing nothing into the TX from the bus
-            fifoTx_WEN <= 1'b0; // write signal is disabled
-        end
-        // Rx buffer to bus
-            if((ren_wen_nidle == from_RX) && ~|rx_data) begin // checking if theres only 0's in the rx_data line...
-            rx_data <= fifoRx_rdata;
-            fifoRx_REN <= 1'b1;
+        
+        // Rx buffer to "bus"
+        if(!nReset) begin
+            rx_data = 8'b0;
+            fifoRx_REN = 1'b0;
+        end else if(ren_wen_nidle == from_RX) begin // checking if theres only 0's in the rx_data line...
+            rx_data = fifoRx_rdata;
+            fifoRx_REN = 1'b1;
         end else begin
-            rx_data <= 8'b0;
-            fifoRx_REN <= 1'b0;
+            rx_data = 8'b0;
+            fifoRx_REN = 1'b0;
         end
-        end
-      end
-
-    // logic err;
-    always_ff @(posedge clk, negedge nReset) begin
-    if (!nReset) begin
-        err   <= 0;
-    end else if (ren_wen_nidle) begin
-        err   <= rxErr || ((ren_wen_nidle != from_RX) && err); // checks for a mismatch between errors 
-    end else begin
-        err   <= rxErr || err; // if there is an exisiting error it persists, 
     end
+    
+    // always_ff @(posedge clk, negedge nReset) begin
+    //     // "bus" to tx_buffer
+    //     if (!nReset) begin
+    //         fifoTx_wdata <= 8'b0;
+    //         fifoTx_WEN <= 1'b0;
+    //     end else if(ren_wen_nidle == to_TX) begin
+    //         fifoTx_wdata <= tx_data; // assume we r sending it through the first byte at a time right now
+    //         fifoTx_WEN <= 1'b1;
+    //     end else begin
+    //         fifoTx_wdata <= 8'b0; // else writing nothing into the TX from the bus
+    //         fifoTx_WEN <= 1'b0; // write signal is disabled
+    //     end
+        
+    //     // Rx buffer to "bus"
+    //     if(!nReset) begin
+    //         rx_data <= 8'b0;
+    //         fifoRx_REN <= 1'b0;
+    //     end else if(ren_wen_nidle == from_RX) begin // checking if theres only 0's in the rx_data line...
+    //         rx_data <= fifoRx_rdata;
+    //         fifoRx_REN <= 1'b1;
+    //     end else begin
+    //         rx_data <= 8'b0;
+    //         fifoRx_REN <= 1'b0;
+    //     end
+    // end
+
+    //logic to make sure err persists
+    always_ff @(posedge clk, negedge nReset) begin
+        if (!nReset) begin
+            err   <= 0;
+        end else begin
+            err <= rxErr || err; //maybe add on overrun underrun errors
+        end
+        // end else if (ren_wen_nidle) begin
+        //     err   <= rxErr || ((ren_wen_nidle != from_RX) && err); // checks for a mismatch between errors 
+        // end else begin
+        //     err   <= rxErr || err; // if there is an exisiting error it persists, 
+        // end
     end   
 
 endmodule
