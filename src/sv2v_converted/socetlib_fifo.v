@@ -13,8 +13,7 @@ module socetlib_fifo (
 	rdata
 );
 	reg _sv2v_0;
-	parameter DEPTH = 8;
-	parameter ADDR_BITS = $clog2(DEPTH);
+	parameter signed [31:0] DEPTH = 8;
 	input CLK;
 	input nRST;
 	input WEN;
@@ -25,8 +24,14 @@ module socetlib_fifo (
 	output wire empty;
 	output reg underrun;
 	output reg overrun;
-	output wire [ADDR_BITS - 1:0] count;
+	output wire [$clog2(DEPTH) - 1:0] count;
 	output wire [7:0] rdata;
+	generate
+		if ((DEPTH == 0) || ((DEPTH & (DEPTH - 1)) != 0)) begin : genblk1
+			$error("%m: DEPTH must be a power of 2 >= 1!");
+		end
+	endgenerate
+	localparam signed [31:0] ADDR_BITS = $clog2(DEPTH);
 	reg full_internal;
 	reg full_next;
 	reg empty_internal;

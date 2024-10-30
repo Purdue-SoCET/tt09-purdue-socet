@@ -100,8 +100,13 @@ module AHBUart_tapeout_wrapper #(
             // end else begin
             //   rate <= DefaultRate;
             // end
+        end
+    end
             
-             ///   
+    always_ff  @(posedge clk, negedge nReset) begin
+        if (!nReset) begin
+            buffer_clear <= 1'b0;
+        end else begin
             if(ren_wen_nidle == BUFFER_CLEAR) begin // if the read and write direction pin is enabled simultaneously
                 buffer_clear <= 1'b1;
             end else begin
@@ -208,7 +213,11 @@ module AHBUart_tapeout_wrapper #(
     assign rts = fifoRx_full;
     always_ff @(posedge clk, negedge nReset) begin
         //UART Rx to buffer Rx
-        if(rxDone && !rxErr) begin
+        if (!nReset) begin
+            fifoRx_wdata <= 8'b0;
+            fifoRx_WEN <= 1'b0;
+        end
+        else if(rxDone && !rxErr) begin
             if (fifoRx_overrun) begin
                 fifoRx_wdata <= fifoRx_wdata;
                 fifoRx_WEN <= 1'b0;
@@ -223,9 +232,16 @@ module AHBUart_tapeout_wrapper #(
             fifoRx_wdata <= 8'b0; // clear out the data in the fifo and disable writing into it
             fifoRx_WEN <= 1'b0;
         end
+    end
 
+    always_ff @(posedge clk, negedge nReset) begin
         //buffer Tx to UART Tx
-        if(cts && !txBusy && txDone) begin //is txDone or txBusy for this spot?? A: either signal should be fine, they are the converse of each other and I don't think its meaningful when
+        if (!nReset) begin
+            txData <= 8'b0;
+            txValid <= 1'b0;
+            fifoTx_REN <= 1'b0;
+        end
+        else if(cts && !txBusy && txDone) begin //is txDone or txBusy for this spot?? A: either signal should be fine, they are the converse of each other and I don't think its meaningful when
                                                                       //both are high, M: makes sense
             if (fifoTx_underrun) begin
                 txData <= fifoTx_rdata; //m - weird logic, ask about this later
@@ -244,10 +260,9 @@ module AHBUart_tapeout_wrapper #(
     //making this always_comb just to see what happens :) 
     always_comb begin
         // "bus" to tx_buffer
-        if (!nReset) begin
-            fifoTx_wdata = 8'b0;
-            fifoTx_WEN = 1'b0;
-        end else if(ren_wen_nidle == to_TX) begin
+        fifoTx_wdata = 8'b0;
+        fifoTx_WEN = 1'b0;
+        if(ren_wen_nidle == to_TX) begin
             fifoTx_wdata = tx_data; // assume we r sending it through the first byte at a time right now
             fifoTx_WEN = 1'b1;
         end else begin
@@ -256,10 +271,9 @@ module AHBUart_tapeout_wrapper #(
         end
         
         // Rx buffer to "bus"
-        if(!nReset) begin
-            rx_data = 8'b0;
-            fifoRx_REN = 1'b0;
-        end else if(ren_wen_nidle == from_RX) begin // checking if theres only 0's in the rx_data line...
+        rx_data = 8'b0;
+        fifoRx_REN = 1'b0;
+        if(ren_wen_nidle == from_RX) begin // checking if theres only 0's in the rx_data line...
             rx_data = fifoRx_rdata;
             fifoRx_REN = 1'b1;
         end else begin

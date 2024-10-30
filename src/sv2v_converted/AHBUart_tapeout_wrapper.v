@@ -11,32 +11,34 @@ module AHBUart_tapeout_wrapper (
 	err
 );
 	reg _sv2v_0;
-	parameter [15:0] DefaultRate = 5207;
-	input wire clk;
-	input wire nReset;
+	parameter [19:0] DefaultRate = 5207;
+	input clk;
+	input nReset;
 	input wire [3:0] control;
 	input wire [7:0] tx_data;
 	output reg [7:0] rx_data;
-	input wire rx;
+	input rx;
 	output wire tx;
-	input wire cts;
+	input cts;
 	output wire rts;
 	output reg err;
 	wire [1:0] rate_control;
 	wire [1:0] ren_wen;
-	reg [15:0] new_rate;
+	reg [19:0] rate;
+	reg [19:0] new_rate;
 	reg [1:0] ren_wen_nidle;
 	reg [1:0] prev_ren_wen;
 	assign ren_wen = control[3:2];
 	assign rate_control = control[1:0];
+	reg buffer_clear;
 	always @(posedge clk or negedge nReset)
 		if (!nReset) begin
 			prev_ren_wen <= 2'd0;
 			ren_wen_nidle <= 2'd0;
 		end
 		else begin
-			if (ren_wen == 2'd0)
-				ren_wen_nidle <= prev_ren_wen;
+			if ((ren_wen != 2'd0) && (prev_ren_wen == 2'd0))
+				ren_wen_nidle <= ren_wen;
 			else
 				ren_wen_nidle <= 2'd0;
 			prev_ren_wen <= ren_wen;
@@ -51,15 +53,11 @@ module AHBUart_tapeout_wrapper (
 			default: new_rate = DefaultRate;
 		endcase
 	end
-	reg buffer_clear;
-	reg [15:0] rate;
 	always @(posedge clk or negedge nReset)
 		if (!nReset)
 			rate <= DefaultRate;
-		else if (|rate_control)
-			rate <= new_rate;
 		else
-			rate <= DefaultRate;
+			rate <= new_rate;
 	always @(posedge clk or negedge nReset)
 		if (!nReset)
 			buffer_clear <= 1'b0;
@@ -76,13 +74,20 @@ module AHBUart_tapeout_wrapper (
 	wire txClk;
 	wire txBusy;
 	wire txDone;
+	reg syncReset;
+	always @(posedge clk or negedge nReset)
+		if (!nReset)
+			syncReset <= 1;
+		else
+			syncReset <= 0;
 	BaudRateGen #(
-		.MaxClockRate(65536),
+		.MaxClockRate(1048576),
 		.MinBaudRate(1)
 	) bg(
 		.phase(1'b0),
 		.clk(clk),
 		.nReset(nReset),
+		.syncReset(syncReset),
 		.rate(rate),
 		.rxClk(rxClk),
 		.txClk(txClk)
@@ -186,49 +191,43 @@ module AHBUart_tapeout_wrapper (
 			if (fifoTx_underrun) begin
 				txData <= fifoTx_rdata;
 				txValid <= 1'b0;
-				fifoTx_REN <= 1'b1;
 			end
 			else begin
 				txData <= fifoTx_rdata;
 				txValid <= 1'b1;
-				fifoTx_REN <= 1'b1;
 			end
 		end
 		else begin
 			txData <= 8'b00000000;
 			txValid <= 1'b0;
-			fifoTx_REN <= 1'b0;
 		end
-	always @(posedge clk or negedge nReset)
-		if (!nReset) begin
-			fifoTx_wdata <= 8'b00000000;
-			fifoTx_WEN <= 1'b0;
-			rx_data <= 8'b00000000;
-			fifoRx_REN <= 1'b0;
+	always @(*) begin
+		if (_sv2v_0)
+			;
+		fifoTx_wdata = 8'b00000000;
+		fifoTx_WEN = 1'b0;
+		if (ren_wen_nidle == 2'd1) begin
+			fifoTx_wdata = tx_data;
+			fifoTx_WEN = 1'b1;
 		end
 		else begin
-			if ((ren_wen_nidle == 2'd1) && |tx_data) begin
-				fifoTx_wdata <= tx_data;
-				fifoTx_WEN <= 1'b1;
-			end
-			else begin
-				fifoTx_wdata <= 8'b00000000;
-				fifoTx_WEN <= 1'b0;
-			end
-			if ((ren_wen_nidle == 2'd2) && ~|rx_data) begin
-				rx_data <= fifoRx_rdata;
-				fifoRx_REN <= 1'b1;
-			end
-			else begin
-				rx_data <= 8'b00000000;
-				fifoRx_REN <= 1'b0;
-			end
+			fifoTx_wdata = 8'b00000000;
+			fifoTx_WEN = 1'b0;
 		end
+		rx_data = 8'b00000000;
+		fifoRx_REN = 1'b0;
+		if (ren_wen_nidle == 2'd2) begin
+			rx_data = fifoRx_rdata;
+			fifoRx_REN = 1'b1;
+		end
+		else begin
+			rx_data = 8'b00000000;
+			fifoRx_REN = 1'b0;
+		end
+	end
 	always @(posedge clk or negedge nReset)
 		if (!nReset)
 			err <= 0;
-		else if (ren_wen_nidle)
-			err <= rxErr || ((ren_wen_nidle != 2'd2) && err);
 		else
 			err <= rxErr || err;
 	initial _sv2v_0 = 0;

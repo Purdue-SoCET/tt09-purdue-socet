@@ -1,6 +1,7 @@
 module BaudRateGen (
 	clk,
 	nReset,
+	syncReset,
 	phase,
 	rate,
 	rxClk,
@@ -12,6 +13,7 @@ module BaudRateGen (
 	parameter signed [31:0] Oversample = 16;
 	input clk;
 	input nReset;
+	input syncReset;
 	input phase;
 	localparam signed [31:0] txWidth = $clog2(MaxClockRate / MinBaudRate);
 	input [txWidth - 1:0] rate;
