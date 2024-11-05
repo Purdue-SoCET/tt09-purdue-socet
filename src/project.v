@@ -24,7 +24,7 @@ module tt_um_purdue_socet_uart (
   wire _unused = &{ena, ui_in[7:6], 1'b0};
 
   // Instantiate project
-  AHBUart_tapeout_wrapper uart_proj (
+  AHBUart_tapeout uart_proj (
     .clk(clk),
     .nReset(rst_n),
     .control(ui_in[5:2]),

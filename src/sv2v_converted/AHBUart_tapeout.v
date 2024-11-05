@@ -1,4 +1,4 @@
-module AHBUart_tapeout_wrapper (
+module AHBUart_tapeout (
 	clk,
 	nReset,
 	control,
@@ -58,13 +58,14 @@ module AHBUart_tapeout_wrapper (
 			rate <= DefaultRate;
 		else
 			rate <= new_rate;
-	always @(posedge clk or negedge nReset)
-		if (!nReset)
-			buffer_clear <= 1'b0;
-		else if (ren_wen_nidle == 2'd3)
-			buffer_clear <= 1'b1;
+	always @(*) begin
+		if (_sv2v_0)
+			;
+		if (ren_wen_nidle == 2'd3)
+			buffer_clear = 1'b1;
 		else
-			buffer_clear <= 1'b0;
+			buffer_clear = 1'b0;
+	end
 	wire [7:0] rxData;
 	reg [7:0] txData;
 	wire rxErr;
@@ -119,7 +120,7 @@ module AHBUart_tapeout_wrapper (
 	wire fifoRx_empty;
 	wire fifoRx_underrun;
 	wire fifoRx_overrun;
-	wire [2:0] fifoRx_count;
+	wire [3:0] fifoRx_count;
 	wire [7:0] fifoRx_rdata;
 	socetlib_fifo fifoRx(
 		.CLK(clk),
@@ -143,7 +144,7 @@ module AHBUart_tapeout_wrapper (
 	wire fifoTx_empty;
 	wire fifoTx_underrun;
 	wire fifoTx_overrun;
-	wire [2:0] fifoTx_count;
+	wire [3:0] fifoTx_count;
 	wire [7:0] fifoTx_rdata;
 	socetlib_fifo fifoTx(
 		.CLK(clk),
@@ -162,45 +163,56 @@ module AHBUart_tapeout_wrapper (
 	assign fifoRx_clear = buffer_clear;
 	assign fifoTx_clear = buffer_clear;
 	assign rts = fifoRx_full;
-	always @(posedge clk or negedge nReset)
-		if (!nReset) begin
-			fifoRx_wdata <= 8'b00000000;
-			fifoRx_WEN <= 1'b0;
-		end
-		else if (rxDone && !rxErr) begin
+	always @(*) begin
+		if (_sv2v_0)
+			;
+		if (rxDone && !rxErr) begin
 			if (fifoRx_overrun) begin
-				fifoRx_wdata <= fifoRx_wdata;
-				fifoRx_WEN <= 1'b0;
+				fifoRx_wdata = 8'b00000000;
+				fifoRx_WEN = 1'b0;
 			end
 			else begin
-				fifoRx_wdata <= rxData;
-				fifoRx_WEN <= 1'b1;
+				fifoRx_wdata = rxData;
+				fifoRx_WEN = 1'b1;
 			end
 		end
 		else begin
-			fifoRx_wdata <= 8'b00000000;
-			fifoRx_WEN <= 1'b0;
+			fifoRx_wdata = 8'b00000000;
+			fifoRx_WEN = 1'b0;
 		end
+	end
+	reg prev_txClk;
 	always @(posedge clk or negedge nReset)
-		if (!nReset) begin
-			txData <= 8'b00000000;
-			txValid <= 1'b0;
-			fifoTx_REN <= 1'b0;
+		if (!nReset)
+			prev_txClk <= 1'b0;
+		else
+			prev_txClk <= txClk;
+	always @(*) begin
+		if (_sv2v_0)
+			;
+		if (fifoTx_empty || !cts) begin
+			txData = 8'b00000000;
+			txValid = 1'b0;
+			fifoTx_REN = 1'b0;
 		end
-		else if ((cts && !txBusy) && txDone) begin
-			if (fifoTx_underrun) begin
-				txData <= fifoTx_rdata;
-				txValid <= 1'b0;
+		else if (prev_txClk) begin
+			if (!txBusy) begin
+				txData = fifoTx_rdata;
+				txValid = 1'b1;
+				fifoTx_REN = 1'b1;
 			end
 			else begin
-				txData <= fifoTx_rdata;
-				txValid <= 1'b1;
+				txData = 8'b00000000;
+				txValid = 1'b0;
+				fifoTx_REN = 1'b0;
 			end
 		end
 		else begin
-			txData <= 8'b00000000;
-			txValid <= 1'b0;
+			txData = 8'b00000000;
+			txValid = 1'b0;
+			fifoTx_REN = 1'b0;
 		end
+	end
 	always @(*) begin
 		if (_sv2v_0)
 			;

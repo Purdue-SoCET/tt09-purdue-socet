@@ -1,7 +1,6 @@
-/* manually inserting the socetFIFO errors while this gets sorted out...*/
 module socetlib_fifo #(
     parameter type T = logic [7:0], // type of a FIFO entry
-    parameter int DEPTH = 8 // # of FIFO entries
+    parameter DEPTH = 8 // # of FIFO entries
 )(
     input CLK,
     input nRST,
@@ -13,7 +12,7 @@ module socetlib_fifo #(
     output logic empty,
     output logic underrun, 
     output logic overrun,
-    output logic [$clog2(DEPTH)-1:0] count,
+    output logic [$clog2(DEPTH+1)-1:0] count,
     output T rdata
 );
 
@@ -29,10 +28,9 @@ module socetlib_fifo #(
     
     localparam int ADDR_BITS = $clog2(DEPTH);
 
-    
-    logic full_internal, full_next, empty_internal, empty_next;
     logic overrun_next, underrun_next;
     logic [ADDR_BITS-1:0] write_ptr, write_ptr_next, read_ptr, read_ptr_next;
+    logic [$clog2(DEPTH+1)-1:0] count_next;
     T [DEPTH-1:0] fifo, fifo_next;
 
     always_ff @(posedge CLK, negedge nRST) begin
@@ -40,67 +38,62 @@ module socetlib_fifo #(
             fifo <= '{default: '0};
             write_ptr <= '0;
             read_ptr <= '0;
-            full_internal <= 1'b0;
-            empty_internal <= 1'b1;
             overrun <= 1'b0;
             underrun <= 1'b0;
+            count <= '0;
         end else begin
             fifo <= fifo_next;
             write_ptr <= write_ptr_next;
             read_ptr <= read_ptr_next;
-            full_internal <= full_next;
-            empty_internal <= empty_next;
             overrun <= overrun_next;
             underrun <= underrun_next;
+            count <= count_next;
         end
     end
 
     always_comb begin
         fifo_next = fifo;
-        full_next = full_internal;
-        empty_next = empty_internal;
         write_ptr_next = write_ptr;
         read_ptr_next = read_ptr;
         overrun_next = overrun;
         underrun_next = underrun;
+        count_next = count;
 
         if(clear) begin
             // No need to actually reset FIFO data,
             // changing pointers/flags to "empty" state is OK
-            full_next = 1'b0;
-            empty_next = 1'b1;
             write_ptr_next = '0;
             read_ptr_next = '0;
             overrun_next = 1'b0;
             underrun_next = 1'b0;
+            count_next = '0;
         end else begin
-            if(REN && !empty) begin
+            if(REN && !empty && !(full && WEN)) begin
                 read_ptr_next = read_ptr + 1;
-                full_next = 1'b0;
-                empty_next = (read_ptr_next == write_ptr_next);
             end else if(REN && empty) begin
                 underrun_next = 1'b1;
             end
 
-            if(WEN && !full) begin
+            if(WEN && !full && !(empty && REN)) begin
                 write_ptr_next = write_ptr + 1;
                 fifo_next[write_ptr] = wdata;
-                empty_next = 1'b0;
-                full_next = (write_ptr_next == read_ptr_next);
             end else if(WEN && full) begin
                 overrun_next = 1'b1;
+            end
+
+            if (count == DEPTH) begin
+                count_next = count - (REN ? 1 : 0) + ((REN && WEN)? 1 : 0);
+            end else if (count == 0) begin
+                count_next = count + (WEN ? 1 : 0) - ((REN && WEN)? 1 : 0);
+            end else begin
+                count_next = count + (WEN ? 1 : 0) - (REN ? 1 : 0);
             end
         end
     end
 
-    //assign count = (write_ptr > read_ptr) ? (write_ptr - read_ptr) : (ADDR_BITS - (read_ptr - write_ptr));
-    assign count = write_ptr - read_ptr;
+    assign full = count == DEPTH;
+    assign empty = count == 0;
     assign rdata = fifo[read_ptr];
-
-    assign full = full_internal;
-    assign empty = empty_internal;
-
-
 endmodule
 
 
@@ -152,24 +145,25 @@ module BaudRateGen #(
     txClk     = (rate > 1) ? (txCount == 0) ^ phase : phase;
   end
 
+  // TODO: Michael, please define the reset values
+  // For now, we reset to 0
   always_ff @(posedge clk, negedge nReset) begin
     if (!nReset) begin
       // rxCount <= rxRate - offset - 1;
-      rxCount <= 2603;
-    end
-    else begin
-      if (rxCount == 0) begin
-        rxCount <= rxRate - 1;
-      end else if (!inWait) begin
-        rxCount <= rxCount - 1;
-      end
+      rxCount <= 0;
+    end else if (rxCount == 0) begin
+      rxCount <= rxRate - 1;
+    end else if (!inWait) begin
+      rxCount <= rxCount - 1;
     end
   end
 
+  // TODO: Michael, please define the reset values
+  // For now, we reset to 0
   always_ff @(posedge clk, negedge nReset) begin
     if (!nReset) begin
       // txCount <= rate - 1;
-      txCount <= 5207 - 1;
+      txCount <= 0;
     end else begin
       txCount <= txCount - 1;
     end
@@ -215,6 +209,7 @@ module UartRxEn #(
     else if (en) begin
       cmp <= in;
     end
+    // It was like this before (not synthesizable for some reason):
     // cmp <= !nReset ? 1 : en ? in : cmp;
   end
 

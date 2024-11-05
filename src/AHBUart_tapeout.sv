@@ -17,35 +17,33 @@
 *
 *   Created by:   Vito Gamberini
 *   Email:        vito@gamberini.email
-*   Modified by:  Michael Li, Yash Singh 
+*   Modified by:  Michael Li (li4601@purdue.edu), Yash Singh (sing1018@purdue.edu) 
 *   Date Created: 9/21/2024
 *   Description:  Modification of AHB wrapper for Tape out Nov 10 testing.
 */
 
 //uart implementation
 
-module AHBUart_tapeout_wrapper #(
+module AHBUart_tapeout #(
     logic [19:0] DefaultRate = 5207  // Chosen by fair dice roll
-    //Michael - i don't like this number :(
+    //Michael - i don't like this number :( 
+    //Yash - my bad ..?
 ) (
-    input clk, // 1
-    input nReset, // 1
-    input logic [3:0] control, // 4
-    input logic [7:0] tx_data, // input to the fifo, and then the transceiver..which is then sent out again by tx
-    output logic [7:0] rx_data, // received from rx, output from the reciever, to the fifo..which is then sent out by the data line
-    //Note: tx_data and rx_data will be merged into a single bidirectional line on the tapeout
+    input clk, 
+    input nReset, 
+    input logic [3:0] control, 
+    input logic [7:0] tx_data,
+    output logic [7:0] rx_data,
     
-    input  rx, // 1
+    input  rx, 
     output tx,
 
-    input cts, // 1
+    input cts, 
     output rts,
     output err 
 
-    // PIN COUNT:
-    // rx_data, tx_data 8/8 bidirectional (bidirectional lines are handled in the tapeout wrapper file)
-    // clk-1, nReset-1, control-4, rx-1, cts-4, 8/8 in 
-    // tx, rts, err, 3/8 out
+    //note to self: should we add pins for buffer count?
+
 );
 
     logic [1:0] rate_control, ren_wen;
@@ -65,8 +63,6 @@ module AHBUart_tapeout_wrapper #(
         BUFFER_CLEAR = 3
     } data_state_t;
 
-    //basically there should be a clock cycle between each data request (double check this works properly on waveform)
-    //  rest of the hardware is based on ren_wen_nidle
     always_ff@(posedge clk, negedge nReset) begin
         if (!nReset) begin
             prev_ren_wen <= IDLE;
@@ -95,24 +91,20 @@ module AHBUart_tapeout_wrapper #(
             rate <= DefaultRate;
         end else begin
             rate <= new_rate;
-            // if(|rate_control) begin //this won't allow you to set rate to DefaultRate
-            //   rate <= new_rate;
-            // end else begin
-            //   rate <= DefaultRate;
-            // end
         end
     end
             
-    always_ff  @(posedge clk, negedge nReset) begin
-        if (!nReset) begin
-            buffer_clear <= 1'b0;
-        end else begin
-            if(ren_wen_nidle == BUFFER_CLEAR) begin // if the read and write direction pin is enabled simultaneously
-                buffer_clear <= 1'b1;
+	//always_ff  @(posedge clk, negedge nReset) begin //trying as a comb for now
+	always_comb begin
+		// if (!nReset) begin //removing nRest b/c not syntheziable
+            // buffer_clear = 1'b0;
+        // end else begin
+            if(ren_wen_nidle == BUFFER_CLEAR) begin 
+                buffer_clear = 1'b1;
             end else begin
-                buffer_clear <= 1'b0; // else the buffer is not clear 
+                buffer_clear = 1'b0; // else the buffer is not clear 
             end
-        end
+        // end
     end
 
     // UART signal
@@ -125,18 +117,11 @@ module AHBUart_tapeout_wrapper #(
     always_ff @(posedge clk, negedge nReset) begin
         if (!nReset) begin
             syncReset <= 1;
-        // end else if (ren_wen_nidle != 2'b0) begin // check if ren_wen is beyond idle..
-        //     //this case logic is kinda goofy, we shouldn't reset when when the read or write signal goes on
-        //     case (ren_wen_nidle)
-        //         to_TX, from_RX: syncReset <= 1; // if in read or write enable...
-        //     endcase
         end else begin
             syncReset <= 0;
         end
     end
 
-    // Params set "clock rate" to 2**16, and "min baud rate" to 1
-    // This is equivalent to "please give me 20-bit counters"
     BaudRateGen #(2 ** 20, 1) bg (
         .phase(1'b0),
         .*
@@ -165,7 +150,7 @@ module AHBUart_tapeout_wrapper #(
     logic fifoRx_WEN, fifoRx_REN, fifoRx_clear;
     logic [7:0] fifoRx_wdata;
     logic fifoRx_full, fifoRx_empty, fifoRx_underrun, fifoRx_overrun;
-            logic [$clog2(8)-1:0] fifoRx_count; //current buffer capacity is 8, Note to self: might reduce if chip too big
+            logic [$clog2(8):0] fifoRx_count; //current buffer capacity is 8, Note to self: might reduce if chip too big
     logic [7:0] fifoRx_rdata;
 
     socetlib_fifo fifoRx (
@@ -187,7 +172,7 @@ module AHBUart_tapeout_wrapper #(
     logic fifoTx_WEN, fifoTx_REN, fifoTx_clear;
     logic [7:0] fifoTx_wdata;
     logic fifoTx_full, fifoTx_empty, fifoTx_underrun, fifoTx_overrun;
-    logic [$clog2(8)-1:0] fifoTx_count; //current buffer capacity is 8
+    logic [$clog2(8):0] fifoTx_count; //current buffer capacity is 8
     logic [7:0] fifoTx_rdata;
 
     socetlib_fifo fifoTx (
@@ -209,55 +194,94 @@ module AHBUart_tapeout_wrapper #(
     assign fifoRx_clear = buffer_clear;
     assign fifoTx_clear = buffer_clear;
 
-    // UART - buffer signal mechanics
     assign rts = fifoRx_full;
-    always_ff @(posedge clk, negedge nReset) begin
-        //UART Rx to buffer Rx
-        if (!nReset) begin
-            fifoRx_wdata <= 8'b0;
-            fifoRx_WEN <= 1'b0;
-        end
-        else if(rxDone && !rxErr) begin
-            if (fifoRx_overrun) begin
-                fifoRx_wdata <= fifoRx_wdata;
-                fifoRx_WEN <= 1'b0;
-                // do we want to keep or flush out the old data in the fifo register if its full and the rx wants to send in more data?
-                //    michael - probably not, the user should reset the buffer if you overflow, but just in case we can ask cole
+
+	//logic for UartRx to fifoRx
+	// always_ff @(posedge clk, negedge nReset) begin //testing this as a comb for now
+	always_comb begin
+		// if (!nReset) begin //getting rid of nReset b/c not synthesizabel
+            // fifoRx_wdata = 8'b0;
+            // fifoRx_WEN = 1'b0;
+        // end else
+		if(rxDone && !rxErr) begin
+			if (fifoRx_overrun) begin //m - probably better to just check if fifoRx is full/empty maybe
+                fifoRx_wdata = 8'b0;
+                fifoRx_WEN = 1'b0;
             end else begin
-                // alt, check with fifo clear
-                fifoRx_wdata <= rxData; //do i need to account for overflow, probably not?
-                fifoRx_WEN <= 1'b1;
+                fifoRx_wdata = rxData; 
+                fifoRx_WEN = 1'b1;
             end
         end else begin
-            fifoRx_wdata <= 8'b0; // clear out the data in the fifo and disable writing into it
-            fifoRx_WEN <= 1'b0;
+            fifoRx_wdata = 8'b0; 
+            fifoRx_WEN = 1'b0;
         end
     end
 
-    always_ff @(posedge clk, negedge nReset) begin
-        //buffer Tx to UART Tx
-        if (!nReset) begin
-            txData <= 8'b0;
-            txValid <= 1'b0;
-            fifoTx_REN <= 1'b0;
-        end
-        else if(cts && !txBusy && txDone) begin //is txDone or txBusy for this spot?? A: either signal should be fine, they are the converse of each other and I don't think its meaningful when
-                                                                      //both are high, M: makes sense
-            if (fifoTx_underrun) begin
-                txData <= fifoTx_rdata; //m - weird logic, ask about this later
-                txValid <= 1'b0;
-            end else begin
-                txData <= fifoTx_rdata; //should i account for buffer capacity, maybe not? // should be fine, both are 8 bits...
-                txValid <= 1'b1; // the ts signal is valid
-            end
-        end else begin
-            txData <= 8'b0;
-            txValid <= 1'b0;
-        end
+	//logic for fifoTx to UartTx
+	logic prev_txClk;
+	always_ff @(posedge clk, negedge nReset) begin
+		if(!nReset) begin
+			prev_txClk <= 1'b0;
+		end else begin
+			prev_txClk <= txClk;
+		end
+	end
+	always_comb begin
+		// if(!nReset) begin //getting rid of nRest b/c not synthesizable
+			// txData = 8'b0;
+			// txValid = 1'b0;
+			// fifoTx_REN = 1'b0;
+		// end else begin
+			if(fifoTx_empty || !cts) begin
+				txData = 8'b0;
+				txValid = 1'b0;
+				fifoTx_REN = 1'b0;
+			end else begin
+				if(prev_txClk) begin
+					if(!txBusy) begin
+						txData = fifoTx_rdata;
+						txValid = 1'b1;
+						fifoTx_REN = 1'b1;
+					end else begin
+						txData = 8'b0;
+						txValid = 1'b0;
+						fifoTx_REN = 1'b0;
+					end
+				end else begin
+					txData = 8'b0;
+					txValid = 1'b0;
+					fifoTx_REN = 1'b0;
+				end
+			end
+		// end
+		
+   //      if (!nReset) begin
+   //          txData = 8'b0;
+   //          txValid = 1'b0;
+   //          fifoTx_REN = 1'b0;
+   //      end else if(cts && !txBusy) begin
+			// if (fifoTx_underrun) begin //m - weird logic, ask about this later (once underrun is detected, it persists permanently, so we can't use this buffer anymore)
+			// 	txData = fifoTx_rdata;
+   //              txValid = 1'b0;
+			// 	fifoTx_REN = 1'b0;
+			// end else if(fifoTx_empty) begin
+			// 	txData = 8'b0;
+			// 	txValid = 1'b0;
+			// 	fifoTx_REN = 1'b0;
+			// end else begin
+   //              txData = fifoTx_rdata;
+   //              txValid = 1'b1;
+			// 	fifoTx_REN = 1'b1;
+   //          end
+   //      end else begin
+   //          txData = 8'b0;
+   //          txValid = 1'b0;
+	  //   	fifoTx_REN = 1'b0;
+   //      end
     end
 
-    // "bus signal" mechanics
-    //making this always_comb just to see what happens :) 
+
+	//buffer "bus" logic
     always_comb begin
         // "bus" to tx_buffer
         fifoTx_wdata = 8'b0;
@@ -282,32 +306,32 @@ module AHBUart_tapeout_wrapper #(
         end
     end
     
-    // always_ff @(posedge clk, negedge nReset) begin
+    // "bus signal" mechanics
+    // //making this always_comb just to see what happens :) 
+    // always_comb begin
     //     // "bus" to tx_buffer
-    //     if (!nReset) begin
-    //         fifoTx_wdata <= 8'b0;
-    //         fifoTx_WEN <= 1'b0;
-    //     end else if(ren_wen_nidle == to_TX) begin
-    //         fifoTx_wdata <= tx_data; // assume we r sending it through the first byte at a time right now
-    //         fifoTx_WEN <= 1'b1;
+    //     fifoTx_wdata = 8'b0;
+    //     fifoTx_WEN = 1'b0;
+    //     if(ren_wen_nidle == to_TX) begin
+    //         fifoTx_wdata = tx_data; // assume we r sending it through the first byte at a time right now
+    //         fifoTx_WEN = 1'b1;
     //     end else begin
-    //         fifoTx_wdata <= 8'b0; // else writing nothing into the TX from the bus
-    //         fifoTx_WEN <= 1'b0; // write signal is disabled
+    //         fifoTx_wdata = 8'b0; // else writing nothing into the TX from the bus
+    //         fifoTx_WEN = 1'b0; // write signal is disabled
     //     end
         
     //     // Rx buffer to "bus"
-    //     if(!nReset) begin
-    //         rx_data <= 8'b0;
-    //         fifoRx_REN <= 1'b0;
-    //     end else if(ren_wen_nidle == from_RX) begin // checking if theres only 0's in the rx_data line...
-    //         rx_data <= fifoRx_rdata;
-    //         fifoRx_REN <= 1'b1;
+    //     rx_data = 8'b0;
+    //     fifoRx_REN = 1'b0;
+    //     if(ren_wen_nidle == from_RX) begin // checking if theres only 0's in the rx_data line...
+    //         rx_data = fifoRx_rdata;
+    //         fifoRx_REN = 1'b1;
     //     end else begin
-    //         rx_data <= 8'b0;
-    //         fifoRx_REN <= 1'b0;
+    //         rx_data = 8'b0;
+    //         fifoRx_REN = 1'b0;
     //     end
     // end
-
+    
     //logic to make sure err persists
     always_ff @(posedge clk, negedge nReset) begin
         if (!nReset) begin
@@ -315,11 +339,6 @@ module AHBUart_tapeout_wrapper #(
         end else begin
             err <= rxErr || err; //maybe add on overrun underrun errors
         end
-        // end else if (ren_wen_nidle) begin
-        //     err   <= rxErr || ((ren_wen_nidle != from_RX) && err); // checks for a mismatch between errors 
-        // end else begin
-        //     err   <= rxErr || err; // if there is an exisiting error it persists, 
-        // end
-    end   
+     end 
 
 endmodule

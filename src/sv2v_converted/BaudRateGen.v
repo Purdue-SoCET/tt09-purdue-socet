@@ -47,14 +47,14 @@ module BaudRateGen (
 	end
 	always @(posedge clk or negedge nReset)
 		if (!nReset)
-			rxCount <= 2603;
+			rxCount <= 0;
 		else if (rxCount == 0)
 			rxCount <= rxRate - 1;
 		else if (!inWait)
 			rxCount <= rxCount - 1;
 	always @(posedge clk or negedge nReset)
 		if (!nReset)
-			txCount <= 5206;
+			txCount <= 0;
 		else
 			txCount <= txCount - 1;
 	initial _sv2v_0 = 0;

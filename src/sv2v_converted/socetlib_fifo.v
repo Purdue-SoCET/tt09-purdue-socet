@@ -13,7 +13,7 @@ module socetlib_fifo (
 	rdata
 );
 	reg _sv2v_0;
-	parameter signed [31:0] DEPTH = 8;
+	parameter DEPTH = 8;
 	input CLK;
 	input nRST;
 	input WEN;
@@ -24,7 +24,7 @@ module socetlib_fifo (
 	output wire empty;
 	output reg underrun;
 	output reg overrun;
-	output wire [$clog2(DEPTH) - 1:0] count;
+	output reg [$clog2(DEPTH + 1) - 1:0] count;
 	output wire [7:0] rdata;
 	generate
 		if ((DEPTH == 0) || ((DEPTH & (DEPTH - 1)) != 0)) begin : genblk1
@@ -32,16 +32,13 @@ module socetlib_fifo (
 		end
 	endgenerate
 	localparam signed [31:0] ADDR_BITS = $clog2(DEPTH);
-	reg full_internal;
-	reg full_next;
-	reg empty_internal;
-	reg empty_next;
 	reg overrun_next;
 	reg underrun_next;
 	reg [ADDR_BITS - 1:0] write_ptr;
 	reg [ADDR_BITS - 1:0] write_ptr_next;
 	reg [ADDR_BITS - 1:0] read_ptr;
 	reg [ADDR_BITS - 1:0] read_ptr_next;
+	reg [$clog2(DEPTH + 1) - 1:0] count_next;
 	reg [(DEPTH * 8) - 1:0] fifo;
 	reg [(DEPTH * 8) - 1:0] fifo_next;
 	always @(posedge CLK or negedge nRST)
@@ -49,59 +46,55 @@ module socetlib_fifo (
 			fifo <= {DEPTH {8'b00000000}};
 			write_ptr <= 1'sb0;
 			read_ptr <= 1'sb0;
-			full_internal <= 1'b0;
-			empty_internal <= 1'b1;
 			overrun <= 1'b0;
 			underrun <= 1'b0;
+			count <= 1'sb0;
 		end
 		else begin
 			fifo <= fifo_next;
 			write_ptr <= write_ptr_next;
 			read_ptr <= read_ptr_next;
-			full_internal <= full_next;
-			empty_internal <= empty_next;
 			overrun <= overrun_next;
 			underrun <= underrun_next;
+			count <= count_next;
 		end
 	always @(*) begin
 		if (_sv2v_0)
 			;
 		fifo_next = fifo;
-		full_next = full_internal;
-		empty_next = empty_internal;
 		write_ptr_next = write_ptr;
 		read_ptr_next = read_ptr;
 		overrun_next = overrun;
 		underrun_next = underrun;
+		count_next = count;
 		if (clear) begin
-			full_next = 1'b0;
-			empty_next = 1'b1;
 			write_ptr_next = 1'sb0;
 			read_ptr_next = 1'sb0;
 			overrun_next = 1'b0;
 			underrun_next = 1'b0;
+			count_next = 1'sb0;
 		end
 		else begin
-			if (REN && !empty) begin
+			if ((REN && !empty) && !(full && WEN))
 				read_ptr_next = read_ptr + 1;
-				full_next = 1'b0;
-				empty_next = read_ptr_next == write_ptr_next;
-			end
 			else if (REN && empty)
 				underrun_next = 1'b1;
-			if (WEN && !full) begin
+			if ((WEN && !full) && !(empty && REN)) begin
 				write_ptr_next = write_ptr + 1;
 				fifo_next[write_ptr * 8+:8] = wdata;
-				empty_next = 1'b0;
-				full_next = write_ptr_next == read_ptr_next;
 			end
 			else if (WEN && full)
 				overrun_next = 1'b1;
+			if (count == DEPTH)
+				count_next = (count - (REN ? 1 : 0)) + (REN && WEN ? 1 : 0);
+			else if (count == 0)
+				count_next = (count + (WEN ? 1 : 0)) - (REN && WEN ? 1 : 0);
+			else
+				count_next = (count + (WEN ? 1 : 0)) - (REN ? 1 : 0);
 		end
 	end
-	assign count = write_ptr - read_ptr;
+	assign full = count == DEPTH;
+	assign empty = count == 0;
 	assign rdata = fifo[read_ptr * 8+:8];
-	assign full = full_internal;
-	assign empty = empty_internal;
 	initial _sv2v_0 = 0;
 endmodule
