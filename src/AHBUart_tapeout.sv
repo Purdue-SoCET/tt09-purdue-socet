@@ -25,9 +25,7 @@
 //uart implementation
 
 module AHBUart_tapeout #(
-    logic [19:0] DefaultRate = 5207  // Chosen by fair dice roll
-    //Michael - i don't like this number :( 
-    //Yash - my bad ..?
+	logic [19:0] DefaultRate = 5207  // value for 9600 baudrate
 ) (
     input clk, 
     input nReset, 
@@ -49,7 +47,7 @@ module AHBUart_tapeout #(
     logic [1:0] rate_control, ren_wen;
     logic [19:0] rate, new_rate;
     logic [1:0]  ren_wen_nidle, prev_ren_wen; // act as the direction
-    assign ren_wen = control[3:2];
+	assign ren_wen = control[3:2];
     assign rate_control = control[1:0];
     // tristate logic handling...
 
@@ -78,10 +76,12 @@ module AHBUart_tapeout #(
     end
 
   always_comb begin
+	  //"rate" is defined as the amount of clock cycles between each bit send/received by UART
+	  //calculation is clock cycle/baudrate 
         case(rate_control)
-            2'b01: new_rate = 9600;
-            2'b10: new_rate = 50000;
-            2'b11: new_rate = 115200;
+            2'b01: new_rate = 2604;			//value for 19200 baudrate
+            2'b10: new_rate = 1302;			//value for 38400 baudrate
+            2'b11: new_rate = 434;			//value for 115200 baudrate
             default: new_rate = DefaultRate;
         endcase
     end

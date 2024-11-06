@@ -47,9 +47,9 @@ module AHBUart_tapeout (
 		if (_sv2v_0)
 			;
 		case (rate_control)
-			2'b01: new_rate = 9600;
-			2'b10: new_rate = 50000;
-			2'b11: new_rate = 115200;
+			2'b01: new_rate = 2604;
+			2'b10: new_rate = 1302;
+			2'b11: new_rate = 434;
 			default: new_rate = DefaultRate;
 		endcase
 	end

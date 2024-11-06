@@ -55,6 +55,8 @@ module BaudRateGen (
 	always @(posedge clk or negedge nReset)
 		if (!nReset)
 			txCount <= 0;
+		else if (txCount == 0)
+			txCount <= rate - 1;
 		else
 			txCount <= txCount - 1;
 	initial _sv2v_0 = 0;

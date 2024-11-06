@@ -164,6 +164,8 @@ module BaudRateGen #(
     if (!nReset) begin
       // txCount <= rate - 1;
       txCount <= 0;
+	end else if (txCount == 0) begin
+		txCount <= rate - 1;
     end else begin
       txCount <= txCount - 1;
     end

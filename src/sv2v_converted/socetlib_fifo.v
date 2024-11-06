@@ -28,7 +28,7 @@ module socetlib_fifo (
 	output wire [7:0] rdata;
 	generate
 		if ((DEPTH == 0) || ((DEPTH & (DEPTH - 1)) != 0)) begin : genblk1
-			$error("%m: DEPTH must be a power of 2 >= 1!");
+			initial $display("Error [elaboration] src/AHBUart_dependencies.sv:25:13 - socetlib_fifo.genblk1\n msg: ", "%m: DEPTH must be a power of 2 >= 1!");
 		end
 	endgenerate
 	localparam signed [31:0] ADDR_BITS = $clog2(DEPTH);
