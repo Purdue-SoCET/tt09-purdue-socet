@@ -3,7 +3,7 @@ project:
   title:        "SoCET UART"      # Project title
   author:       "Miguel Isrrael Teran"      # Your name
   discord:      "miguel_isrrael"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "A UART made by SoCET team"      # One line description of what your project does
+  description:  "General-purpose UART with hardware control flow and FIFO buffer capacity developed by Purdue's SoCET team"      # One line description of what your project does
   language:     "SystemVerilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     50000000       # Clock frequency in Hz (or 0 if not applicable)
 
@@ -29,10 +29,10 @@ pinout:
   # Inputs
   ui[0]: "rx"
   ui[1]: "cts"
-  ui[2]: "Control pin 0"
-  ui[3]: "Control pin 1"
-  ui[4]: "Control pin 2"
-  ui[5]: "Control pin 3"
+  ui[2]: "Control[0]"
+  ui[3]: "Control[1]"
+  ui[4]: "Control[2]"
+  ui[5]: "Control[3]"
   ui[6]: ""
   ui[7]: ""
 
@@ -40,8 +40,8 @@ pinout:
   uo[0]: "tx"
   uo[1]: "rts"
   uo[2]: "err"
-  uo[3]: ""
-  uo[4]: ""
+  uo[3]: "tx_buffer_full"
+  uo[4]: "rx_buffer_empty"
   uo[5]: ""
   uo[6]: ""
   uo[7]: ""

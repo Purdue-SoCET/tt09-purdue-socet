@@ -17,7 +17,7 @@ module tt_um_purdue_socet_uart (
 );
 
   // All output pins must be assigned. If not used, assign to 0.
-  assign uo_out[7:3] = 5'b0;
+  assign uo_out[7:5] = 3'b0;
   assign uio_oe = (ui_in[5:4] == 2'd2) ? {8{1'b1}} : 8'b0;
 
   // List all unused inputs to prevent warnings
@@ -34,7 +34,9 @@ module tt_um_purdue_socet_uart (
     .tx(uo_out[0]),
     .cts(ui_in[1]),
     .rts(uo_out[1]),
-    .err(uo_out[2])
+    .err(uo_out[2]),
+    .tx_buffer_full(uo_out[3]),
+    .rx_buffer_empty(uo_out[4])
   );
 
 endmodule

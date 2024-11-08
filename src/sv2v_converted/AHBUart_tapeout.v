@@ -8,7 +8,9 @@ module AHBUart_tapeout (
 	tx,
 	cts,
 	rts,
-	err
+	err,
+	tx_buffer_full,
+	rx_buffer_empty
 );
 	reg _sv2v_0;
 	parameter [19:0] DefaultRate = 5207;
@@ -22,6 +24,12 @@ module AHBUart_tapeout (
 	input cts;
 	output wire rts;
 	output reg err;
+	output wire tx_buffer_full;
+	output wire rx_buffer_empty;
+	wire fifoTx_full;
+	assign tx_buffer_full = fifoTx_full;
+	wire fifoRx_empty;
+	assign rx_buffer_empty = fifoRx_empty;
 	wire [1:0] rate_control;
 	wire [1:0] ren_wen;
 	reg [19:0] rate;
@@ -117,7 +125,6 @@ module AHBUart_tapeout (
 	wire fifoRx_clear;
 	reg [7:0] fifoRx_wdata;
 	wire fifoRx_full;
-	wire fifoRx_empty;
 	wire fifoRx_underrun;
 	wire fifoRx_overrun;
 	wire [3:0] fifoRx_count;
@@ -140,7 +147,6 @@ module AHBUart_tapeout (
 	reg fifoTx_REN;
 	wire fifoTx_clear;
 	reg [7:0] fifoTx_wdata;
-	wire fifoTx_full;
 	wire fifoTx_empty;
 	wire fifoTx_underrun;
 	wire fifoTx_overrun;
@@ -163,10 +169,12 @@ module AHBUart_tapeout (
 	assign fifoRx_clear = buffer_clear;
 	assign fifoTx_clear = buffer_clear;
 	assign rts = fifoRx_full;
-	always @(*) begin
-		if (_sv2v_0)
-			;
-		if (rxDone && !rxErr) begin
+	always @(posedge clk or negedge nReset)
+		if (!nReset) begin
+			fifoRx_wdata = 8'b00000000;
+			fifoRx_WEN = 1'b0;
+		end
+		else if (rxDone && !rxErr) begin
 			if (fifoRx_overrun) begin
 				fifoRx_wdata = 8'b00000000;
 				fifoRx_WEN = 1'b0;
@@ -180,22 +188,18 @@ module AHBUart_tapeout (
 			fifoRx_wdata = 8'b00000000;
 			fifoRx_WEN = 1'b0;
 		end
-	end
-	reg prev_txClk;
 	always @(posedge clk or negedge nReset)
-		if (!nReset)
-			prev_txClk <= 1'b0;
-		else
-			prev_txClk <= txClk;
-	always @(*) begin
-		if (_sv2v_0)
-			;
-		if (fifoTx_empty || !cts) begin
+		if (!nReset) begin
 			txData = 8'b00000000;
 			txValid = 1'b0;
 			fifoTx_REN = 1'b0;
 		end
-		else if (prev_txClk) begin
+		else if (fifoTx_empty || !cts) begin
+			txData = 8'b00000000;
+			txValid = 1'b0;
+			fifoTx_REN = 1'b0;
+		end
+		else if (txClk) begin
 			if (!txBusy) begin
 				txData = fifoTx_rdata;
 				txValid = 1'b1;
@@ -212,7 +216,6 @@ module AHBUart_tapeout (
 			txValid = 1'b0;
 			fifoTx_REN = 1'b0;
 		end
-	end
 	always @(*) begin
 		if (_sv2v_0)
 			;
