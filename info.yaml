@@ -1,7 +1,7 @@
 # Tiny Tapeout project information
 project:
-  title:        "SoCET UART"      # Project title
-  author:       "Miguel Isrrael Teran"      # Your name
+  title:        "SoCET UART with FIFO buffers"      # Project title
+  author:       "Miguel Isrrael Teran, Yashashwini Singh, Michael Li, Rafael Monteiro Martins Pinheiro, Vito Gamberini"      # Your name
   discord:      "miguel_isrrael"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
   description:  "General-purpose UART with hardware control flow and FIFO buffer capacity developed by Purdue's SoCET team"      # One line description of what your project does
   language:     "SystemVerilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
